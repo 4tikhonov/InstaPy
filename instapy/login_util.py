@@ -158,7 +158,7 @@ def login_user(browser,
         click().send_keys(password).perform()
 
     login_button = browser.find_element_by_xpath(
-        "//form/span/button[text()='Log in']")
+        '//*[@id="react-root"]/section/main/div/article/div/div[1]/div/form/div[3]/button')
     ActionChains(browser).move_to_element(login_button).click().perform()
     # update server calls
     update_activity()

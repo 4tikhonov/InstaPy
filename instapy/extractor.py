@@ -2,53 +2,76 @@
 from time import sleep
 from re import findall
 import math
+from langdetect import detect
 from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.common.keys import Keys
 import requests
 from datetime import datetime
 import json
+import re
 from elasticsearch import Elasticsearch
 
 
-def difference_between_two_list(list_1,list_2):
-  index = 0
-  if list_1 and list_2:
-    if list_2[0] in list_1:
-      first_element = list_2[0]
-      for idx,item in enumerate(list_1):
-        if item == first_element:
-          index = idx
-          break
-      return list_1[:index]
+def difference_between_two_list(list_1, list_2):
+    index = 0
+    if list_1 and list_2:
+        if list_2[0] in list_1:
+            first_element = list_2[0]
+            for idx,item in enumerate(list_1):
+                if item == first_element:
+                    index = idx
+                    break
+            return list_1[:index]
+        else:
+            return list_1
     else:
-      return list_1
-  else:
-    return list_1
+        return list_1
 
 def get_user_info(browser):
-  """Get the basic user info from the profile screen"""
-  data = browser.find_element_by_xpath("/html/body/script[1]").get_attribute("outerHTML")
-  data =  data.replace('<script type="text/javascript">window._sharedData = ', '')\
-                .replace(';</script>','')
-  data = json.loads(data)
-  alias_name = data["entry_data"]["ProfilePage"][0]["graphql"]["user"]["full_name"]
-  bio = data["entry_data"]["ProfilePage"][0]["graphql"]["user"]["biography"]
-  prof_img = data["entry_data"]["ProfilePage"][0]["graphql"]["user"]["profile_pic_url"]
-  num_of_posts = data["entry_data"]["ProfilePage"][0]["graphql"]["user"]["edge_owner_to_timeline_media"]["count"]
-  followers = data["entry_data"]["ProfilePage"][0]["graphql"]["user"]["edge_followed_by"]["count"]
-  following = data["entry_data"]["ProfilePage"][0]["graphql"]["user"]["edge_follow"]["count"]
-  user_id = data["entry_data"]["ProfilePage"][0]["graphql"]["user"]["id"]
-  return alias_name, bio, prof_img, num_of_posts, followers, following, user_id
+    """Get the basic user info from the profile screen"""
+    sleep(2)
+    data = browser.execute_script("return window._sharedData;")
+    # print(data)
+    # data = json.loads(data)
+    alias_name = data["entry_data"]["ProfilePage"][0]["graphql"]["user"]["full_name"]
+    bio = data["entry_data"]["ProfilePage"][0]["graphql"]["user"]["biography"]
+    prof_img = data["entry_data"]["ProfilePage"][0]["graphql"]["user"]["profile_pic_url"]
+    num_of_posts = data["entry_data"]["ProfilePage"][0]["graphql"]["user"]["edge_owner_to_timeline_media"]["count"]
+    followers = data["entry_data"]["ProfilePage"][0]["graphql"]["user"]["edge_followed_by"]["count"]
+    following = data["entry_data"]["ProfilePage"][0]["graphql"]["user"]["edge_follow"]["count"]
+    user_id = data["entry_data"]["ProfilePage"][0]["graphql"]["user"]["id"]
+    return alias_name, bio, prof_img, num_of_posts, followers, following, user_id
 
 
-def all_extract_post_info(browser):
-  """
-  Get the information from the current post
-  """
-  data  = json.loads(browser.find_element_by_tag_name("pre").text)
-  return data
+def all_extract_post_info(browser, _id, count):
+    """
+    Get the information from the current post
+    """
+    _hash = None
+    browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+    script = """return window.performance.getEntries({entryType: "resource"});"""
+    sleep(2)
+    for req in browser.execute_script(script):
+        if 'query_hash' in req['name']:
+            _hash = req['name']
+    if count > 12:
+        _hash = re.findall('ash=.*&vari', str(_hash))
+        print(_hash)
+        _hash = _hash[0][4:]
+        _hash = _hash[:-5]
+        req = "https://www.instagram.com/graphql/query/?query_hash=" + str(_hash) +\
+              '&variables={\"id\":' + str(_id) + ',\"first\":' + str(count) + "}"
+        #print(req)
+        browser.get(req)
+        data  = json.loads(browser.find_element_by_tag_name("pre").text)
+        nodes = data["data"]["user"]["edge_owner_to_timeline_media"]["edges"]
+    else:
+        data = browser.execute_script("return window._sharedData;")
+        data = json.loads(browser.find_element_by_tag_name("pre").text)
+        nodes = data["data"]["user"]["edge_owner_to_timeline_media"]["edges"]
+    return nodes
 
-def extract_information(browser, username, limit_amount):
+def extract_information(browser, username, limit_amount, logger):
     """Get all the information for the given username"""
 
     browser.get('https://www.instagram.com/' + username)
@@ -61,114 +84,81 @@ def extract_information(browser, username, limit_amount):
     prof_img = ''
     links2 = []
     try:
-        alias_name, bio, prof_img, num_of_posts, followers, following, user_id  = get_user_info(browser)
-        if limit_amount <1 :
+        alias_name, bio, prof_img, num_of_posts, followers, following, user_id = get_user_info(browser)
+        browser.get('https://www.instagram.com/' + username)
+        nodes = all_extract_post_info(browser, user_id, num_of_posts)
+        if limit_amount < 1:
             limit_amount = 999999
         num_of_posts = min(limit_amount, num_of_posts)
     except:
         print ("\nError: Couldn't get user profile.")
         return None
 
-      #prev_divs = browser.find_elements_by_class_name('_70iju')
+    #prev_divs = browser.find_elements_by_class_name('_70iju')
 
-
-    try:
-        body_elem = browser.find_element_by_tag_name('body')
-
-        #load_button = body_elem.find_element_by_xpath\
-        #  ('//a[contains(@class, "_1cr2e _epyes")]')
-        #body_elem.send_keys(Keys.END)
-        #sleep(3)
-
-        #load_button.click()
-
-        links = []
-        links2 = []
-
-        #list links contains 30 links from the current view, as that is the maximum Instagram is showing at one time
-        #list links2 contains all the links collected so far
-
-        previouslen = 0
-        breaking = 0
-
-        print ("Getting only first",12*math.ceil(num_of_posts/12),"posts only, if you want to change this limit, change limit_amount value in crawl_profile.py\n")  
-        while (len(links2) < num_of_posts):
-
-            prev_divs = browser.find_elements_by_tag_name('main')      
-            links_elems = [div.find_elements_by_tag_name('a') for div in prev_divs]  
-            links = sum([[link_elem.get_attribute('href')
-            for link_elem in elems] for elems in links_elems], [])
-            for link in links:
-              if "/p/" in link:
-                links2.append(link) 
-            links2 = list(set(links2))   
-            print ("Scrolling profile ", len(links2), "/", 12*math.ceil(num_of_posts/12))
-            body_elem.send_keys(Keys.END)
-            sleep(1.5)
-
-          ##remove bellow part to never break the scrolling script before reaching the num_of_posts
-            if (len(links2) == previouslen):
-                breaking += 1
-                print ("breaking in ",4-breaking,"...\nIf you believe this is only caused by slow internet, increase sleep time in line 112 in extractor.py")
-            else:
-                breaking = 0
-            if breaking > 3:
-                print ("\nNot getting any more posts, ending scrolling.") 
-                sleep(2)
-                break
-
-            previouslen = len(links2)   
-          ##
-
-    except NoSuchElementException as err:
-        print('- Something went terribly wrong\n')
-
-    if len(links2) == 0:
-        return -1
-
-    post_infos = []
-
-    counter = 1  
-    
-    for link in links2:
-      print ("\n", counter , "/", len(links2))
-      counter = counter + 1
-      template = str('?taken-by=' + username)
-      link = link.replace(template,'?__a=1')
-      browser.get(link)
-      sleep(2)
-      print ("\nScrapping link: ", link)
-      try:
-        post = all_extract_post_info(browser)
-        post_infos.append(post)
-      except NoSuchElementException:
-        print('- Could not get information from post: ' + link)
-        
+    #posts - array of dicts all posts
+    posts = []
     time = datetime.now()
 
-    information = {
-            'id':user_id,
-            'full_name': alias_name,
-            'username': username,
-            'bio': bio,
-            'prof_img': prof_img,
-            'num_of_posts': num_of_posts,
-            'followers': followers,
-            'following': following,
-            'timestamp':int(time.timestamp()),
-            'posts': post_infos     
-    }
+    for node in nodes:
+        try:
+            language = detect(node["node"]["edge_media_to_caption"]["edges"][0]["node"]["text"])
+        except:
+            language = 'en'
+        title = ""
+        if node["node"]["edge_media_to_caption"]["edges"]:
+            text = node["node"]["edge_media_to_caption"]["edges"][0]["node"]["text"]
+            k = 0
+            text = text.split(' ')
+            for word in text:
+                title = title + word + ' '
+                k += 1
+                if k == 11:
+                    break
+        post = {
+            'id': node["node"]["id"],
+            'display_url': node["node"]["display_url"],
+            'is_video': node["node"]["is_video"] if "is_video" in node["node"] else False,
+            'text': node["node"]["edge_media_to_caption"]["edges"][0]["node"]["text"] if node["node"]["edge_media_to_caption"]["edges"] else "",
+            'title': title,
+            'language': language,
+            'shortcode': node["node"]["shortcode"],
+            'comments_count': node["node"]["edge_media_to_comment"]["count"],
+            'timestamp': node["node"]["taken_at_timestamp"],
+            'foundtime': int(time.timestamp()),
+            'like_count': node["node"]["edge_media_preview_like"]["count"],
+            'owner': node["node"]["owner"]["id"],
+            'url': "https://www.instagram.com/p/" + node["node"]["shortcode"]
 
-    return information
+        }
+        #print(post)
+        posts.append(post)
+
+    #end
+
+    information = {
+        'id':user_id,
+        'full_name': alias_name,
+        'username': username,
+        'bio': bio,
+        'prof_img': prof_img,
+        'num_of_posts': num_of_posts,
+        'followers': followers,
+        'following': following,
+        'timestamp': int(time.timestamp())
+    }
+    posts.append(information)
+
+    return posts
 
 def instaimport(searchindex,thisdoctype,newsbody):
     # Index by Elastic
     es = Elasticsearch(
         ['media-audit.com'],
-        http_auth=('elastic', 'changeme'),
+        http_auth=('elastic', 'changeme'), #TODO - config.py
         port=9200
     )
-
+    
     if newsbody:
         searchindex = 'instagram'
         try:

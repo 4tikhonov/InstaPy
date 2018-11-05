@@ -4,7 +4,7 @@ MAINTAINER Grossmann Tim <contact.timgrossmann@gmail.com>
 
 # Set env variables
 ENV CHROME https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-ENV CRHOMEDRIVER http://chromedriver.storage.googleapis.com/2.37/chromedriver_linux64.zip
+ENV CRHOMEDRIVER http://chromedriver.storage.googleapis.com/2.43/chromedriver_linux64.zip
 
 # Environment setup
 RUN apt-get update \
@@ -72,10 +72,19 @@ RUN git clone https://github.com/timgrossmann/InstaPy.git \
     && chmod 755 InstaPy/assets/chromedriver \
     && cd InstaPy \
     && pip install . \
-    && sed -ie 's/#self.display/self.display/g' instapy/instapy.py
+    && pip install langdetect \
+    && pip install daemonize \
+    && pip install arrow \
+    && pip install selenium clarifai pyvirtualdisplay emoji GitPython \
+    && pip install telethon mongoengine \
+    && sed -ie 's/#self.display/self.display/g' instapy/instapy.py 
 
 # Copying the your quickstart file into the container and setting directory
 COPY quickstart.py ./InstaPy
 WORKDIR /InstaPy
 
 CMD ["python3.5", "quickstart.py"]
+RUN mkdir ../telepy
+RUN cd ../telepy/
+CMD ["python3.5", "telepy.py"]
+

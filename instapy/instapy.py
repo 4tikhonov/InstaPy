@@ -244,24 +244,30 @@ class InstaPy:
 
         else:
             if platform.system() == 'Linux':
-                chromedriver_location = "/usr/local/bin/chromedriver"
+                BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                chromedriver_location = os.path.join(BASE_DIR, "assets/chromedriver")
+                #chromedriver_location = "assets/chromedriver"
             else:
                 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
                 chromedriver_location = os.path.join(BASE_DIR, 'assets/chromedriver/chromedriver.exe')
             chrome_options = Options()
+            #chrome_options.add_argument("user-data-dir=selenium")
             chrome_options.add_argument('--dns-prefetch-disable')
             chrome_options.add_argument('--no-sandbox')
             chrome_options.add_argument('--lang=en-US')
             chrome_options.add_argument('--disable-setuid-sandbox')
-
+            chrome_options.add_argument('--disable-dev-shm-usage')
+            chrome_options.add_argument('--disable-gpu')
+            chrome_options.add_argument("disable-infobars")
+            chrome_options.add_argument("--disable-extensions")
             # this option implements Chrome Headless, a new (late 2017)
             # GUI-less browser. chromedriver 2.9 and above required
-            if self.headless_browser:
-                chrome_options.add_argument('--headless')
+           
+            chrome_options.add_argument('--headless')
                 # Replaces browser User Agent from "HeadlessChrome".
-                user_agent = "Chrome"
-                chrome_options.add_argument('user-agent={user_agent}'
-                                            .format(user_agent=user_agent))
+            #    user_agent = "Chrome"
+            #    chrome_options.add_argument('user-agent={user_agent}'
+            #                                .format(user_agent=user_agent))
             capabilities = DesiredCapabilities.CHROME
             # Proxy for chrome
             if self.proxy_address and self.proxy_port > 0:
@@ -283,7 +289,7 @@ class InstaPy:
             chrome_options.add_experimental_option('prefs', chrome_prefs)
             try:
                 
-                self.browser = webdriver.Chrome(chromedriver_location, desired_capabilities=capabilities, chrome_options=chrome_options)
+                self.browser = webdriver.Chrome(executable_path=chromedriver_location, chrome_options=chrome_options)
             except selenium.common.exceptions.WebDriverException as exc:
                 self.logger.exception(exc)
                 raise InstaPyError('ensure chromedriver is installed at {}'.format(
@@ -554,7 +560,7 @@ class InstaPy:
             self.logger.info("Following commenters of '{}' from pictures in last {} days...\nScrapping wall..".format(username, daysold))
             commenters = extract_information(self.browser, username, daysold, max_pic)
 
-            if len(commenters)>0:  
+            if len(commenters) > 0:
                 self.logger.info("Going to follow top {} users.\n".format(amount))
                 sleep(1)
                 # This way of iterating will prevent sleep interference between functions
@@ -2215,17 +2221,24 @@ class InstaPy:
             relax_point = random.randint(15, 20)
             total_accounts = 0
             for username in usernames:
-                self.logger.info('Extracting information from ' + username)
-                information = extract_information(self.browser, username, limit_amount)
+                #checking load avarage
+                while total_accounts % 20 == 0:
+                    if os.getloadavg()[0] < 3:
+                        break
+                    else:
+                        sleep(30)
 
+                self.logger.info('Extracting information from ' + username)
+                information = extract_information(self.browser, username, limit_amount, self.logger)
+                self.logger.info(information)
                 if information == None :
                     print(username + "was skipped because couldn`t get user profile\n")
                     continue
                 elif information == -1:
                     print(username + " was skipped because user has private accounts\n")
                     continue
-
-                print(self.export(information))
+                for post in information:
+                    print(self.export(post))
 
                 total_accounts += 1
 
