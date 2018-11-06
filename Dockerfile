@@ -64,8 +64,9 @@ RUN apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
 
 # Adding InstaPy
-RUN git clone https://github.com/timgrossmann/InstaPy.git \
-    && wget ${CRHOMEDRIVER} \
+RUN mkdir InstaPy \
+    && mkdir InstaPy/assets \
+    wget ${CRHOMEDRIVER} \
     && unzip chromedriver_linux64 \
     && mv chromedriver InstaPy/assets/chromedriver \
     && chmod +x InstaPy/assets/chromedriver \
@@ -75,16 +76,12 @@ RUN git clone https://github.com/timgrossmann/InstaPy.git \
     && pip install langdetect \
     && pip install daemonize \
     && pip install arrow \
-    && pip install selenium clarifai pyvirtualdisplay emoji GitPython \
-    && pip install telethon mongoengine \
-    && sed -ie 's/#self.display/self.display/g' instapy/instapy.py 
+    && pip install selenium clarifai pyvirtualdisplay emoji GitPython
 
 # Copying the your quickstart file into the container and setting directory
-COPY quickstart.py ./InstaPy
+COPY docker_conf/all_in_one/quickstart.py ./InstaPy
 WORKDIR /InstaPy
+ADD /* ./
 
 CMD ["python3.5", "quickstart.py"]
-RUN mkdir ../telepy
-RUN cd ../telepy/
-CMD ["python3.5", "telepy.py"]
 
